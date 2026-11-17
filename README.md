@@ -37,6 +37,19 @@ Run tests:
 pytest
 ```
 
+## Run with Docker
+
+Build and start the API and PostgreSQL database:
+
+```bash
+docker compose up --build
+```
+
+The API is available at <http://localhost:8000>. The database schema is applied
+automatically before the API starts. Stop the containers with `Ctrl+C`; remove
+the containers while retaining database data with `docker compose down`. To
+also delete the persisted database data, run `docker compose down --volumes`.
+
 ## Configuration
 
 Settings live in `app/config.py` (`Settings`) and are read from `INCIDENTIQ_*`
