@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: incidentiq
+      POSTGRES_USER: incidentiq
+      POSTGRES_PASSWORD: incidentiq
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U incidentiq -d incidentiq"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    environment:
+      INCIDENTIQ_DATABASE_URL: postgresql+psycopg://incidentiq:incidentiq@db:5432/incidentiq
+      INCIDENTIQ_ENVIRONMENT: development
+    command: sh -c "alembic upgrade head && uvicorn app.main:app_factory --factory --host 0.0.0.0 --port 8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
