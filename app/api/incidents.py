@@ -65,6 +65,62 @@ class IncidentCreateResponse(BaseModel):
         )
 
 
+class IncidentResponse(BaseModel):
+    incident_id: UUID
+    service: str
+    title: str
+    description: str
+    severity: str
+    environment: str
+    detected_at: datetime
+    initial_symptoms: list[str]
+    status: str
+    created_at: datetime
+
+    @classmethod
+    def from_incident(cls, incident: Incident) -> "IncidentResponse":
+        return cls(
+            incident_id=incident.id,
+            service=incident.service,
+            title=incident.title,
+            description=incident.description,
+            severity=incident.severity,
+            environment=incident.environment,
+            detected_at=incident.detected_at,
+            initial_symptoms=incident.initial_symptoms,
+            status=incident.status,
+            created_at=incident.created_at,
+        )
+
+
+@router.get(
+    "/{incident_id}",
+    response_model=IncidentResponse,
+    responses={
+        404: {"description": "Incident not found"},
+        503: {"description": "Incident storage unavailable"},
+    },
+)
+def get_incident(incident_id: UUID, session: DbSessionDep) -> IncidentResponse:
+    try:
+        incident = IncidentService(session).get(incident_id)
+    except SQLAlchemyError:
+        logger.exception("Incident retrieval failed due to a database error")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "incident_persistence_unavailable",
+                "message": "The incident could not be retrieved.",
+            },
+        ) from None
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "incident_not_found", "message": "Incident not found."},
+        )
+    return IncidentResponse.from_incident(incident)
+
+
 @router.post(
     "",
     response_model=IncidentCreateResponse,

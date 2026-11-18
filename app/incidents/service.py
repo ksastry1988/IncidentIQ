@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import timezone
+from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -16,6 +17,9 @@ class IncidentService:
     def __init__(self, session: Session) -> None:
         self._session = session
         self._repository = IncidentRepository(session)
+
+    def get(self, incident_id: UUID) -> Incident | None:
+        return self._repository.get(incident_id)
 
     def create(self, incident: IncidentCreate) -> Incident:
         incident = replace(

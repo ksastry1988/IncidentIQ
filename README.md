@@ -63,6 +63,19 @@ key and request returns the same incident; using that key for different incident
 data returns `409 Conflict`. Severity must be one of `severity 1` through
 `severity 5`. Invalid requests return `422`.
 
+## Retrieve an incident
+
+```bash
+curl http://localhost:8000/api/v1/incidents/00000000-0000-0000-0000-000000000001
+```
+
+The `200` response contains `incident_id`, `service`, `title`, `description`,
+`severity`, `environment`, `detected_at`, `initial_symptoms`, `status`, and
+`created_at` from storage. An unknown UUID returns `404` with
+`detail.code` set to `incident_not_found`; a malformed UUID returns `422`.
+If incident storage is unavailable, the API returns `503` with
+`detail.code` set to `incident_persistence_unavailable`.
+
 ## Run with Docker
 
 Build and start the API and PostgreSQL database:
