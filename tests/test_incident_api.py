@@ -1,5 +1,5 @@
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -213,5 +213,102 @@ def test_database_failure_returns_explicit_error(
         "detail": {
             "code": "incident_persistence_unavailable",
             "message": "The incident could not be persisted.",
+        }
+    }
+
+
+def test_get_incident_reads_persisted_fields_and_current_status(
+    api_client, incident_payload
+):
+    client, session_factory = api_client
+    created = client.post(
+        "/api/v1/incidents",
+        json=incident_payload,
+        headers={"Idempotency-Key": "retrieve-alert"},
+    )
+    assert created.status_code == 201
+    incident_id = created.json()["incident_id"]
+
+    with session_factory() as session:
+        record = session.get(IncidentRecord, UUID(incident_id))
+        record.status = "INVESTIGATING"
+        session.commit()
+        before = record.to_incident()
+
+    response = client.get(f"/api/v1/incidents/{incident_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {
+        "incident_id",
+        "service",
+        "title",
+        "description",
+        "severity",
+        "environment",
+        "detected_at",
+        "initial_symptoms",
+        "status",
+        "created_at",
+    }
+    assert body["incident_id"] == incident_id
+    for field in (
+        "service",
+        "title",
+        "description",
+        "severity",
+        "environment",
+        "initial_symptoms",
+    ):
+        assert body[field] == incident_payload[field]
+    assert datetime.fromisoformat(body["detected_at"].replace("Z", "+00:00")).replace(
+        tzinfo=None
+    ) == datetime(2026, 11, 17, 12, 0)
+    assert body["created_at"] == created.json()["created_at"]
+    assert body["status"] == "INVESTIGATING"
+    with session_factory() as session:
+        assert session.query(IncidentRecord).count() == 1
+        assert session.get(IncidentRecord, UUID(incident_id)).to_incident() == before
+
+
+def test_get_unknown_incident_returns_404_without_creating_record(api_client):
+    client, session_factory = api_client
+
+    response = client.get(f"/api/v1/incidents/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": {"code": "incident_not_found", "message": "Incident not found."}
+    }
+    with session_factory() as session:
+        assert session.query(IncidentRecord).count() == 0
+
+
+def test_get_malformed_incident_id_returns_422_without_creating_record(api_client):
+    client, session_factory = api_client
+
+    response = client.get("/api/v1/incidents/not-a-uuid")
+
+    assert response.status_code == 422
+    with session_factory() as session:
+        assert session.query(IncidentRecord).count() == 0
+
+
+def test_get_database_failure_returns_safe_error(api_client, monkeypatch):
+    client, _ = api_client
+
+    def fail_lookup(self, incident_id):
+        raise OperationalError(
+            "private query", {}, RuntimeError("private database detail")
+        )
+
+    monkeypatch.setattr(IncidentRepository, "get", fail_lookup)
+    response = client.get(f"/api/v1/incidents/{uuid4()}")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "code": "incident_persistence_unavailable",
+            "message": "The incident could not be retrieved.",
         }
     }
