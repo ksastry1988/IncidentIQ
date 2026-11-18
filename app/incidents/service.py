@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import timezone
 
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +18,9 @@ class IncidentService:
         self._repository = IncidentRepository(session)
 
     def create(self, incident: IncidentCreate) -> Incident:
+        incident = replace(
+            incident, detected_at=incident.detected_at.astimezone(timezone.utc)
+        )
         existing = self._repository.get_by_idempotency_key(incident.idempotency_key)
         if existing is not None:
             return self._return_existing(existing, incident)

@@ -49,7 +49,7 @@ curl -X POST http://localhost:8000/api/v1/incidents \
     "service": "payments",
     "title": "Elevated error rate",
     "description": "Payment requests are failing.",
-    "severity": "critical",
+    "severity": "severity 1",
     "environment": "production",
     "detected_at": "2026-11-17T12:00:00Z",
     "initial_symptoms": ["HTTP 500 responses", "Elevated latency"]
@@ -60,7 +60,8 @@ Successful requests return `201` with the HLD incident shape: `incident_id`,
 `title`, `description`, `severity`, `affected_services`, `created_at`, and
 `status`. `affected_services` contains the submitted service. Replaying the same
 key and request returns the same incident; using that key for different incident
-data returns `409 Conflict`. Invalid requests return `422`.
+data returns `409 Conflict`. Severity must be one of `severity 1` through
+`severity 5`. Invalid requests return `422`.
 
 ## Run with Docker
 

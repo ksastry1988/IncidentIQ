@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, status
@@ -21,7 +21,9 @@ class IncidentCreateRequest(BaseModel):
     service: str = Field(min_length=1, max_length=255)
     title: str = Field(min_length=1, max_length=500)
     description: str = Field(min_length=1)
-    severity: str = Field(min_length=1, max_length=50)
+    severity: Literal[
+        "severity 1", "severity 2", "severity 3", "severity 4", "severity 5"
+    ]
     environment: str = Field(min_length=1, max_length=100)
     detected_at: datetime
     initial_symptoms: list[str] = Field(min_length=1)

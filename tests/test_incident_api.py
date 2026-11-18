@@ -38,7 +38,7 @@ def incident_payload():
         "service": "payments",
         "title": "Elevated error rate",
         "description": "Payment requests are failing.",
-        "severity": "critical",
+        "severity": "severity 1",
         "environment": "production",
         "detected_at": "2026-11-17T12:00:00Z",
         "initial_symptoms": ["HTTP 500 responses", "Elevated latency"],
@@ -73,10 +73,29 @@ def test_create_incident_returns_hld_response(api_client, incident_payload):
 
 
 @pytest.mark.parametrize(
+    "severity", ["severity 1", "severity 2", "severity 3", "severity 4", "severity 5"]
+)
+def test_supported_severities_are_accepted(api_client, incident_payload, severity):
+    client, _ = api_client
+
+    response = client.post(
+        "/api/v1/incidents",
+        json={**incident_payload, "severity": severity},
+        headers={"Idempotency-Key": severity},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["severity"] == severity
+
+
+@pytest.mark.parametrize(
     "changes",
     [
         {"title": ""},
         {"service": "  "},
+        {"severity": "critical"},
+        {"severity": "severity 0"},
+        {"severity": "severity 6"},
         {"detected_at": "not-a-timestamp"},
         {"detected_at": "2026-11-17T12:00:00"},
         {"initial_symptoms": [""]},
@@ -134,6 +153,27 @@ def test_idempotent_replay_returns_same_incident_without_duplicate(
     assert replay.json() == first.json()
     with session_factory() as session:
         assert session.query(IncidentRecord).count() == 1
+
+
+def test_idempotent_replay_normalizes_non_utc_detected_at(
+    api_client, incident_payload
+):
+    client, session_factory = api_client
+    headers = {"Idempotency-Key": "offset-alert"}
+    offset_payload = {
+        **incident_payload,
+        "detected_at": "2026-11-17T14:00:00+02:00",
+    }
+
+    first = client.post("/api/v1/incidents", json=offset_payload, headers=headers)
+    replay = client.post("/api/v1/incidents", json=offset_payload, headers=headers)
+
+    assert first.status_code == replay.status_code == 201
+    assert replay.json() == first.json()
+    with session_factory() as session:
+        assert session.query(IncidentRecord).count() == 1
+        incident = session.query(IncidentRecord).one()
+        assert incident.detected_at == datetime(2026, 11, 17, 12, 0)
 
 
 def test_idempotency_key_conflict_returns_409(api_client, incident_payload):
