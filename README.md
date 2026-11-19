@@ -2,8 +2,8 @@
 
 IncidentIQ is an incident investigation service. It accepts operational alerts,
 persists incident metadata, and is designed to support evidence gathering and
-root-cause analysis. The current application foundation provides configuration,
-health checks, and the PostgreSQL incident persistence layer.
+root-cause analysis. The current application provides configuration, health
+checks, PostgreSQL incident persistence, and a simulated log source.
 
 ## Development
 
@@ -76,6 +76,36 @@ The `200` response contains `incident_id`, `service`, `title`, `description`,
 If incident storage is unavailable, the API returns `503` with
 `detail.code` set to `incident_persistence_unavailable`.
 
+## Query simulated logs
+
+The read-only log source is independent of the database and other sources:
+
+```bash
+curl -G http://localhost:8000/api/v1/simulated/logs \
+  --data-urlencode 'service=payments' \
+  --data-urlencode 'start=2026-11-17T11:00:00Z' \
+  --data-urlencode 'end=2026-11-17T13:00:00Z' \
+  --data-urlencode 'severity=ERROR' \
+  --data-urlencode 'error_pattern=invalid configuration' \
+  --data-urlencode 'page_size=20'
+```
+
+`service`, `start`, and `end` are required. Times must include a timezone;
+the range includes both endpoints. Optional filters can be combined:
+`severity` (`INFO`, `WARNING`, or `ERROR`), `error_pattern` (case-insensitive
+literal substring of the message), and `correlation_id` (exact match). Service
+and correlation ID matches are case-sensitive. Results are ordered by timestamp
+then ID. `page` is one-based; `page_size` defaults to 20 and is limited to 100.
+The response contains `items`, `page`, `page_size`, and `has_more`. No matches
+produce an empty `items` list; invalid queries return `422`, and source failure
+returns `503` with `detail.code` set to `simulated_log_source_unavailable`.
+
+The fixed fixtures on 2026-11-17 UTC cover a payments deployment regression
+(11:55–12:01), a checkout/inventory downstream degradation (13:00–13:01),
+and search resource saturation (14:00–14:01). Failure can be simulated by
+injecting `SimulatedLogSource(unavailable=True)` via the `get_log_source`
+dependency; no public query parameter enables failure.
+
 ## Run with Docker
 
 Build and start the API and PostgreSQL database:
@@ -88,6 +118,14 @@ The API is available at <http://localhost:8000>. The database schema is applied
 automatically before the API starts. Stop the containers with `Ctrl+C`; remove
 the containers while retaining database data with `docker compose down`. To
 also delete the persisted database data, run `docker compose down --volumes`.
+
+To run the tests in a container using the application image:
+
+```bash
+docker build -t incidentiq-test .
+docker run --rm -v "$PWD/tests:/app/tests:ro" incidentiq-test \
+  sh -c 'pip install ".[dev]" && pytest'
+```
 
 ## Configuration
 
