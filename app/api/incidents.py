@@ -3,13 +3,21 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
+from app.api.simulated_dependencies import get_dependency_source
 from app.dependencies import DbSessionDep
 from app.incidents.models import Incident, IncidentCreate
 from app.incidents.service import IdempotencyConflictError, IncidentService
+from app.simulated_dependencies.source import (
+    DependencyQuery,
+    ServiceDependencies,
+    SimulatedDependencySource,
+    SimulatedDependencySourceError,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/incidents", tags=["incidents"])
@@ -93,15 +101,7 @@ class IncidentResponse(BaseModel):
         )
 
 
-@router.get(
-    "/{incident_id}",
-    response_model=IncidentResponse,
-    responses={
-        404: {"description": "Incident not found"},
-        503: {"description": "Incident storage unavailable"},
-    },
-)
-def get_incident(incident_id: UUID, session: DbSessionDep) -> IncidentResponse:
+def get_incident_or_raise(session: Session, incident_id: UUID) -> Incident:
     try:
         incident = IncidentService(session).get(incident_id)
     except SQLAlchemyError:
@@ -118,7 +118,53 @@ def get_incident(incident_id: UUID, session: DbSessionDep) -> IncidentResponse:
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "incident_not_found", "message": "Incident not found."},
         )
-    return IncidentResponse.from_incident(incident)
+    return incident
+
+
+@router.get(
+    "/{incident_id}",
+    response_model=IncidentResponse,
+    responses={
+        404: {"description": "Incident not found"},
+        503: {"description": "Incident storage unavailable"},
+    },
+)
+def get_incident(incident_id: UUID, session: DbSessionDep) -> IncidentResponse:
+    return IncidentResponse.from_incident(get_incident_or_raise(session, incident_id))
+
+
+class IncidentDependenciesResponse(ServiceDependencies):
+    incident_id: UUID
+
+
+@router.get(
+    "/{incident_id}/dependencies",
+    response_model=IncidentDependenciesResponse,
+    responses={
+        404: {"description": "Incident not found"},
+        503: {"description": "Incident storage or dependency source unavailable"},
+    },
+)
+def get_incident_dependencies(
+    incident_id: UUID,
+    session: DbSessionDep,
+    source: Annotated[SimulatedDependencySource, Depends(get_dependency_source)],
+) -> IncidentDependenciesResponse:
+    incident = get_incident_or_raise(session, incident_id)
+    try:
+        dependencies = source.query(DependencyQuery(service=incident.service))
+    except SimulatedDependencySourceError:
+        logger.exception("Incident dependency lookup failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "simulated_dependency_source_unavailable",
+                "message": "The simulated dependency source is unavailable.",
+            },
+        ) from None
+    return IncidentDependenciesResponse(
+        incident_id=incident.id, **dependencies.model_dump()
+    )
 
 
 @router.post(

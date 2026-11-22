@@ -152,6 +152,30 @@ fixtures include a payments regression deployment (`dep-1002`, 11:55 UTC on
 2026-11-17) shortly before the incident. Source failure returns `503` with
 `detail.code` set to `simulated_deployment_source_unavailable`.
 
+## Query simulated service dependencies
+
+The independent dependency source returns the services related to a service:
+
+```bash
+curl -G http://localhost:8000/api/v1/simulated/dependencies \
+  --data-urlencode 'service=checkout'
+```
+
+Each relationship has `service`, `direction` (`depends_on` when the requested
+service relies on it, `depended_on_by` when it relies on the requested
+service), `depth` (1 is direct, higher is transitive), and `path` (the call
+path from caller to callee). Results are ordered by direction, depth, then
+service and cover only the requested service's graph. A service with no known
+dependencies returns `relationship_count: 0` and an empty `relationships`
+list. The fixtures include the checkout → inventory → inventory-db
+downstream-degradation path, plus unrelated services such as search. Source
+failure returns `503` with `detail.code` set to
+`simulated_dependency_source_unavailable`.
+
+To look up the dependencies of an incident's affected service, call
+`GET /api/v1/incidents/{incident_id}/dependencies`. It returns the same fields
+plus `incident_id`; an unknown incident returns `404`.
+
 ## Run with Docker
 
 Build and start the API and PostgreSQL database:
