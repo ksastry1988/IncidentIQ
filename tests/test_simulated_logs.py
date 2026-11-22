@@ -90,8 +90,10 @@ def test_no_matches_are_explicit_empty_success(client):
     response = query(client, correlation_id="not-found")
     assert response.status_code == 200
     assert response.json() == {
-        "items": [], "page": 1, "page_size": 20, "has_more": False
+        "items": [], "page": 1, "page_size": 20, "has_more": False,
+        "service_known": True,
     }
+    assert query(client, service="unknown").json()["service_known"] is False
 
 
 @pytest.mark.parametrize(

@@ -23,6 +23,7 @@ def test_returns_required_fields_for_regression_near_incident(client):
         "start": "2026-11-17T11:00:00Z",
         "end": "2026-11-17T12:00:00Z",
         "deployment_count": 1,
+        "service_known": True,
         "deployments": [
             {
                 "deployment_id": "dep-1002",
@@ -65,6 +66,7 @@ def test_no_matching_deployments_is_explicit_empty_result(client):
         assert response.status_code == 200
         assert response.json()["deployment_count"] == 0
         assert response.json()["deployments"] == []
+        assert response.json()["service_known"] is (params.get("service") != "unknown")
 
 
 def test_invalid_queries_are_rejected(client):

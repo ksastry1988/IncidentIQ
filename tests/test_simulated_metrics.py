@@ -3,6 +3,8 @@ import pytest
 from app.api.simulated_metrics import get_metrics_source
 from app.simulated_metrics.source import (
     MetricsQuery,
+    MetricsWindow,
+    _compare,
     SimulatedMetricsSource,
     SimulatedMetricsSourceError,
 )
@@ -54,6 +56,15 @@ def test_query_returns_all_metrics_and_incident_baseline_comparison(client):
             "cpu_percent": 45.5,
             "memory_percent": 60.5,
         },
+        "change": body["change"],
+    }
+    change = body["change"]
+    assert change["request_volume"] == {"absolute": 40.0, "percent": pytest.approx(40 / 205 * 100)}
+    assert change["error_rate"]["absolute"] == pytest.approx(8.05)
+    assert change["p99_latency_ms"]["absolute"] == pytest.approx(2395.0)
+    assert set(change) == {
+        "request_volume", "p50_latency_ms", "p95_latency_ms", "p99_latency_ms",
+        "error_rate", "cpu_percent", "memory_percent",
     }
 
 
@@ -133,6 +144,7 @@ def test_missing_one_window_does_not_hide_the_other(client):
     assert response.json()["incident"]["request_volume"] is None
     assert response.json()["baseline"]["data_available"] is True
     assert response.json()["baseline"]["request_volume"] == 205
+    assert response.json()["change"] == {}
 
 
 def test_invalid_or_missing_windows_are_rejected(client):
@@ -157,3 +169,32 @@ def test_simulated_source_failure_is_not_an_empty_success(client):
             "message": "The simulated metrics source is unavailable.",
         }
     }
+
+
+def _window(**overrides):
+    values = dict.fromkeys(
+        (
+            "request_volume", "p50_latency_ms", "p95_latency_ms",
+            "p99_latency_ms", "error_rate", "cpu_percent", "memory_percent",
+        ),
+        10.0,
+    )
+    return MetricsWindow(
+        start="2026-11-17T12:00:00Z",
+        end="2026-11-17T12:05:00Z",
+        sample_count=1,
+        data_available=True,
+        **{**values, **overrides},
+    )
+
+
+def test_zero_baseline_keeps_absolute_change_and_has_null_percent():
+    change = _compare(
+        _window(error_rate=8.0, cpu_percent=0.0),
+        _window(error_rate=0.0, cpu_percent=0.0),
+    )
+    assert change["error_rate"].absolute == 8.0
+    assert change["error_rate"].percent is None
+    assert change["cpu_percent"].absolute == 0.0
+    assert change["cpu_percent"].percent is None
+    assert change["request_volume"].percent == 0.0

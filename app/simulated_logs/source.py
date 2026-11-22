@@ -46,6 +46,8 @@ class LogPage(BaseModel):
     page: int
     page_size: int
     has_more: bool
+    # False when the source holds no logs at all for the requested service.
+    service_known: bool
 
 
 class SimulatedLogSourceError(Exception):
@@ -123,4 +125,5 @@ class SimulatedLogSource:
             page=query.page,
             page_size=query.page_size,
             has_more=offset + query.page_size < len(matches),
+            service_known=any(e.service == query.service for e in EVENTS),
         )
