@@ -106,6 +106,31 @@ and search resource saturation (14:00–14:01). Failure can be simulated by
 injecting `SimulatedLogSource(unavailable=True)` via the `get_log_source`
 dependency; no public query parameter enables failure.
 
+## Query simulated metrics
+
+The independent metrics source returns incident and baseline snapshots for a
+service:
+
+```bash
+curl -G http://localhost:8000/api/v1/simulated/metrics \
+  --data-urlencode 'service=payments' \
+  --data-urlencode 'incident_start=2026-11-17T12:00:00Z' \
+  --data-urlencode 'incident_end=2026-11-17T12:05:00Z' \
+  --data-urlencode 'baseline_start=2026-11-17T11:45:00Z' \
+  --data-urlencode 'baseline_end=2026-11-17T11:50:00Z'
+```
+
+The response includes request volume, P50/P95/P99 latency in milliseconds,
+error rate, CPU, and memory. Windows are timezone-aware and inclusive; request
+volume is summed and the other metrics are averaged across matching samples;
+the latency values are averages of per-sample percentiles, not percentiles
+calculated over all requests. Error rate, CPU, and memory are percentages.
+A window without samples returns `sample_count: 0`, `data_available: false`,
+and null metric values. The fixed fixtures include deployment regression,
+downstream degradation, and resource saturation scenarios. Simulated source
+failure returns `503` with `detail.code` set to
+`simulated_metrics_source_unavailable`.
+
 ## Run with Docker
 
 Build and start the API and PostgreSQL database:
