@@ -312,3 +312,41 @@ def test_get_database_failure_returns_safe_error(api_client, monkeypatch):
             "message": "The incident could not be retrieved.",
         }
     }
+
+
+def test_incident_dependencies_use_the_incident_service(api_client, incident_payload):
+    client, _ = api_client
+    incident_payload["service"] = "checkout"
+    created = client.post(
+        "/api/v1/incidents",
+        json=incident_payload,
+        headers={"Idempotency-Key": "alert-deps"},
+    ).json()
+
+    response = client.get(f"/api/v1/incidents/{created['incident_id']}/dependencies")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["incident_id"] == created["incident_id"]
+    assert body["service"] == "checkout"
+    assert "inventory-db" in {r["service"] for r in body["relationships"]}
+
+
+def test_incident_dependencies_errors(api_client, incident_payload):
+    from app.api.simulated_dependencies import get_dependency_source
+    from app.simulated_dependencies.source import SimulatedDependencySource
+
+    client, _ = api_client
+    assert client.get(f"/api/v1/incidents/{uuid4()}/dependencies").status_code == 404
+
+    created = client.post(
+        "/api/v1/incidents",
+        json=incident_payload,
+        headers={"Idempotency-Key": "alert-deps-fail"},
+    ).json()
+    client.app.dependency_overrides[get_dependency_source] = lambda: SimulatedDependencySource(
+        unavailable=True
+    )
+    response = client.get(f"/api/v1/incidents/{created['incident_id']}/dependencies")
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "simulated_dependency_source_unavailable"
