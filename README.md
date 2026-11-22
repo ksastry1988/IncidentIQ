@@ -3,7 +3,9 @@
 IncidentIQ is an incident investigation service. It accepts operational alerts,
 persists incident metadata, and is designed to support evidence gathering and
 root-cause analysis. The current application provides configuration, health
-checks, PostgreSQL incident persistence, and a simulated log source.
+checks, PostgreSQL incident persistence, and simulated log, metrics,
+deployment, and dependency sources. MCP integration for these sources is in
+progress (see below).
 
 ## Development
 
@@ -175,6 +177,20 @@ failure returns `503` with `detail.code` set to
 To look up the dependencies of an incident's affected service, call
 `GET /api/v1/incidents/{incident_id}/dependencies`. It returns the same fields
 plus `incident_id`; an unknown incident returns `404`.
+
+## Roadmap: MCP integration for investigation tools
+
+Issue #5 (Task 3/9) is split into independently testable subtasks, each with
+its own acceptance criteria. Update this table as subtasks land.
+
+| Subtask | Issue | Status |
+| --- | --- | --- |
+| MCP adapter interface, tool schemas, result envelope | #31 | Planned |
+| Simulated-source adapters exposed via MCP server | #32 | Planned |
+| Service/environment authorization and read-only enforcement | #33 | Planned |
+| Configurable timeouts and distinct source-error handling | #34 | Planned |
+| Sensitive-data redaction and credential isolation | #35 | Planned |
+| Worker MCP client integration and end-to-end tests | #36 | Planned |
 
 ## Run with Docker
 
