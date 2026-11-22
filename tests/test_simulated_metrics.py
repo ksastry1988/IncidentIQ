@@ -3,6 +3,8 @@ import pytest
 from app.api.simulated_metrics import get_metrics_source
 from app.simulated_metrics.source import (
     MetricsQuery,
+    MetricsWindow,
+    _compare,
     SimulatedMetricsSource,
     SimulatedMetricsSourceError,
 )
@@ -167,3 +169,32 @@ def test_simulated_source_failure_is_not_an_empty_success(client):
             "message": "The simulated metrics source is unavailable.",
         }
     }
+
+
+def _window(**overrides):
+    values = dict.fromkeys(
+        (
+            "request_volume", "p50_latency_ms", "p95_latency_ms",
+            "p99_latency_ms", "error_rate", "cpu_percent", "memory_percent",
+        ),
+        10.0,
+    )
+    return MetricsWindow(
+        start="2026-11-17T12:00:00Z",
+        end="2026-11-17T12:05:00Z",
+        sample_count=1,
+        data_available=True,
+        **{**values, **overrides},
+    )
+
+
+def test_zero_baseline_keeps_absolute_change_and_has_null_percent():
+    change = _compare(
+        _window(error_rate=8.0, cpu_percent=0.0),
+        _window(error_rate=0.0, cpu_percent=0.0),
+    )
+    assert change["error_rate"].absolute == 8.0
+    assert change["error_rate"].percent is None
+    assert change["cpu_percent"].absolute == 0.0
+    assert change["cpu_percent"].percent is None
+    assert change["request_volume"].percent == 0.0
