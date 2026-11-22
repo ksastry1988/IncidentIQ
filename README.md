@@ -131,6 +131,27 @@ downstream degradation, and resource saturation scenarios. Simulated source
 failure returns `503` with `detail.code` set to
 `simulated_metrics_source_unavailable`.
 
+## Query simulated deployment history
+
+The independent deployment-history source returns deployments for a service
+within a lookback window ending at `as_of`:
+
+```bash
+curl -G http://localhost:8000/api/v1/simulated/deployments \
+  --data-urlencode 'service=payments' \
+  --data-urlencode 'as_of=2026-11-17T12:00:00Z' \
+  --data-urlencode 'lookback_minutes=60'
+```
+
+`lookback_minutes` defaults to 1440 and may be 1–10080. The window is
+inclusive and `as_of` must be timezone-aware. Each deployment has
+`deployment_id`, `service`, `version`, `timestamp`, `status` (`succeeded`,
+`failed`, or `rolled_back`), and `change_summary`, ordered oldest first. No
+matches return `deployment_count: 0` and an empty `deployments` list. The
+fixtures include a payments regression deployment (`dep-1002`, 11:55 UTC on
+2026-11-17) shortly before the incident. Source failure returns `503` with
+`detail.code` set to `simulated_deployment_source_unavailable`.
+
 ## Run with Docker
 
 Build and start the API and PostgreSQL database:
