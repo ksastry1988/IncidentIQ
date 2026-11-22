@@ -38,6 +38,8 @@ class DeploymentHistory(BaseModel):
     start: AwareDatetime
     end: AwareDatetime
     deployment_count: int = Field(ge=0)
+    # False when the source holds no deployment records at all for the service.
+    service_known: bool
     deployments: list[Deployment]
 
 
@@ -78,7 +80,7 @@ DEPLOYMENTS = (
                 "Update cart totals rounding"),
     _deployment("dep-2002", "checkout", "v5.9.0", 17, 10, 45, S.FAILED,
                 "Enable new shipping estimate flow; migration step failed"),
-    _deployment("dep-3001", "search", "v1.40.0", 15, 8, 0, S.SUCCEEDED,
+    _deployment("dep-3001", "search", "v1.40.0", 17, 8, 0, S.SUCCEEDED,
                 "Add query suggestions index"),
 )
 
@@ -108,5 +110,6 @@ class SimulatedDeploymentSource:
             start=start,
             end=query.as_of,
             deployment_count=len(deployments),
+            service_known=any(d.service == query.service for d in DEPLOYMENTS),
             deployments=deployments,
         )

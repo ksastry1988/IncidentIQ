@@ -47,10 +47,42 @@ class MetricsWindow(BaseModel):
     memory_percent: float | None
 
 
+class MetricChange(BaseModel):
+    absolute: float
+    # None when the baseline value is zero.
+    percent: float | None
+
+
 class MetricsComparison(BaseModel):
     service: str
     incident: MetricsWindow
     baseline: MetricsWindow
+    # Incident minus baseline per metric; empty when either window has no data.
+    change: dict[str, MetricChange]
+
+
+COMPARED_METRICS = (
+    "request_volume",
+    "p50_latency_ms",
+    "p95_latency_ms",
+    "p99_latency_ms",
+    "error_rate",
+    "cpu_percent",
+    "memory_percent",
+)
+
+
+def _compare(incident: MetricsWindow, baseline: MetricsWindow) -> dict[str, MetricChange]:
+    if not (incident.data_available and baseline.data_available):
+        return {}
+    change = {}
+    for name in COMPARED_METRICS:
+        now, before = getattr(incident, name), getattr(baseline, name)
+        change[name] = MetricChange(
+            absolute=now - before,
+            percent=(now - before) / before * 100 if before else None,
+        )
+    return change
 
 
 class SimulatedMetricsSourceError(Exception):
@@ -107,14 +139,17 @@ class SimulatedMetricsSource:
             raise SimulatedMetricsSourceError("Simulated metrics source is unavailable")
 
         service_samples = [sample for sample in SAMPLES if sample.service == query.service]
+        incident = self._window(
+            service_samples, query.incident_start, query.incident_end
+        )
+        baseline = self._window(
+            service_samples, query.baseline_start, query.baseline_end
+        )
         return MetricsComparison(
             service=query.service,
-            incident=self._window(
-                service_samples, query.incident_start, query.incident_end
-            ),
-            baseline=self._window(
-                service_samples, query.baseline_start, query.baseline_end
-            ),
+            incident=incident,
+            baseline=baseline,
+            change=_compare(incident, baseline),
         )
 
     @staticmethod
