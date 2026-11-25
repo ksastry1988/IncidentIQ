@@ -185,12 +185,51 @@ its own acceptance criteria. Update this table as subtasks land.
 
 | Subtask | Issue | Status |
 | --- | --- | --- |
-| MCP adapter interface, tool schemas, result envelope | #31 | Planned |
+| MCP adapter interface, tool schemas, result envelope | #31 | Done |
 | Simulated-source adapters exposed via MCP server | #32 | Planned |
 | Service/environment authorization and read-only enforcement | #33 | Planned |
 | Configurable timeouts and distinct source-error handling | #34 | Planned |
 | Sensitive-data redaction and credential isolation | #35 | Planned |
 | Worker MCP client integration and end-to-end tests | #36 | Planned |
+
+### Adapter interface and result envelope
+
+`app/investigation_tools` defines the read-only tool layer, independent of any
+MCP server or worker. `ToolAdapter` (`adapters.py`) has one implementation per
+tool: `LogsAdapter`, `MetricsAdapter`, `DeploymentsAdapter`, and
+`DependenciesAdapter`. Each exposes `input_schema()` (JSON Schema) and
+`execute(arguments)`, which validates the arguments, calls `fetch(params)` on its
+source (the simulated sources by default; inject fakes for tests), and returns a
+`ResultEnvelope`. Subclasses only implement `fetch`.
+
+Parameters (`schemas.py`): every tool requires `service` and `environment`;
+logs, metrics, and deployments also require timezone-aware `start` and `end`.
+Logs additionally accept `severity`, `error_pattern`, and `correlation_id`.
+Metrics compare the window with the equal-length window before `start`.
+Invalid input raises `pydantic.ValidationError`: missing fields, naive
+datetimes, `end` before `start`, a range longer than
+`ToolLimits.max_time_range` (default 24h), or a `limit` above
+`ToolLimits.max_limit` (default 200). `limit` defaults to
+`ToolLimits.default_limit` (50); results never exceed it.
+
+Every result uses one envelope:
+
+| Field | Meaning |
+| --- | --- |
+| `source` | Name of the backing source |
+| `tool` | `logs`, `metrics`, `deployments`, or `dependencies` |
+| `service`, `environment` | Echo of the request |
+| `query` | Validated parameters, including the resolved `limit` |
+| `items` | Result records, at most `limit` |
+| `truncated` | `true` when more matching records existed than `limit` |
+| `retrieved_at` | UTC timestamp of retrieval |
+
+`ToolRegistry` (`mcp.py`) is the MCP-facing layer, without depending on an MCP
+SDK. `list_tools()` returns `tools/list`-shaped descriptors (`name`,
+`description`, `inputSchema`, `readOnlyHint`). `call_tool(name, arguments)`
+returns a `tools/call`-shaped result: `structuredContent` holds the envelope on
+success; unknown tools and validation failures return `isError: true` with
+per-field `validation_errors`.
 
 ## Run with Docker
 
