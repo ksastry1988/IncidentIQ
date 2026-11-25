@@ -18,6 +18,7 @@ class Deployment(BaseModel):
 
     deployment_id: str
     service: str
+    environment: str = Field(default="production", exclude=True)
     version: str
     timestamp: AwareDatetime
     status: DeploymentStatus
@@ -26,6 +27,7 @@ class Deployment(BaseModel):
 
 class DeploymentQuery(BaseModel):
     service: str = Field(min_length=1, max_length=255)
+    environment: str = Field(default="production", min_length=1, max_length=255)
     # End of the lookback window, typically the incident time.
     as_of: AwareDatetime
     lookback_minutes: int = Field(
@@ -101,6 +103,7 @@ class SimulatedDeploymentSource:
                 deployment
                 for deployment in DEPLOYMENTS
                 if deployment.service == query.service
+                and deployment.environment == query.environment
                 and start <= deployment.timestamp <= query.as_of
             ),
             key=lambda deployment: (deployment.timestamp, deployment.deployment_id),
@@ -110,6 +113,9 @@ class SimulatedDeploymentSource:
             start=start,
             end=query.as_of,
             deployment_count=len(deployments),
-            service_known=any(d.service == query.service for d in DEPLOYMENTS),
+            service_known=any(
+                d.service == query.service and d.environment == query.environment
+                for d in DEPLOYMENTS
+            ),
             deployments=deployments,
         )
