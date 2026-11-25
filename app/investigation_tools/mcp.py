@@ -4,6 +4,7 @@ Shapes follow the MCP `tools/list` and `tools/call` results so a server (or test
 can use them directly without this module depending on an MCP SDK.
 """
 import json
+import logging
 from typing import Any, Mapping
 
 from pydantic import ValidationError
@@ -15,7 +16,10 @@ from app.investigation_tools.adapters import (
     MetricsAdapter,
     ToolAdapter,
 )
+from app.investigation_tools.access import ACCESS_DENIED, AccessDenied, AccessPolicy
 from app.investigation_tools.schemas import ToolLimits
+
+logger = logging.getLogger(__name__)
 
 DESCRIPTIONS = {
     "logs": "Read-only search of service logs within a time range.",
@@ -26,7 +30,13 @@ DESCRIPTIONS = {
 
 
 class ToolRegistry:
-    def __init__(self, adapters: list[ToolAdapter] | None = None, limits: ToolLimits | None = None) -> None:
+    def __init__(
+        self,
+        adapters: list[ToolAdapter] | None = None,
+        limits: ToolLimits | None = None,
+        policy: AccessPolicy | None = None,
+    ) -> None:
+        self._policy = policy or AccessPolicy.from_settings()
         limits = limits or ToolLimits()
         adapters = adapters or [
             LogsAdapter(limits=limits),
@@ -52,7 +62,16 @@ class ToolRegistry:
         if adapter is None:
             return _error(f"Unknown tool: {name}")
         try:
-            envelope = adapter.execute(arguments or {})
+            checked = self._policy.authorize(arguments or {})
+        except AccessDenied as denied:
+            # Log the tool and rejected field only, never the submitted values.
+            logger.warning("access denied: tool=%s field=%s", name, denied.field)
+            return _error(
+                f"Access denied: {denied.field} is not authorized",
+                {"error": ACCESS_DENIED, "field": denied.field},
+            )
+        try:
+            envelope = adapter.execute(checked)
         except ValidationError as exc:
             errors = [
                 {"field": ".".join(str(p) for p in e["loc"]), "message": e["msg"]}

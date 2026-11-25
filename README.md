@@ -187,7 +187,7 @@ its own acceptance criteria. Update this table as subtasks land.
 | --- | --- | --- |
 | MCP adapter interface, tool schemas, result envelope | #31 | Done |
 | Simulated-source adapters exposed via MCP server | #32 | Done |
-| Service/environment authorization and read-only enforcement | #33 | Planned |
+| Service/environment authorization and read-only enforcement | #33 | Done |
 | Configurable timeouts and distinct source-error handling | #34 | Planned |
 | Sensitive-data redaction and credential isolation | #35 | Planned |
 | Worker MCP client integration and end-to-end tests | #36 | Planned |
@@ -253,6 +253,24 @@ It registers exactly four read-only tools; no mutating tool exists. All take
 
 A valid query with no matches returns a successful result with `items: []`.
 Tests use an in-process client: `async with Client(create_server()) as c`.
+
+### Access policy
+
+Every `call_tool` is authorized before any source is queried, using allow-lists
+from settings (comma-separated, case- and whitespace-insensitive):
+
+| Variable | Default |
+| --- | --- |
+| `INCIDENTIQ_TOOL_ALLOWED_SERVICES` | `checkout,fraud-check,inventory,inventory-db,payments,search,search-index` |
+| `INCIDENTIQ_TOOL_ALLOWED_ENVIRONMENTS` | `production,staging` |
+
+An empty list allows nothing. A `service` or `environment` that is not allowed
+(or not a string) returns `isError: true` with
+`structuredContent: {"error": "access_denied", "field": "service"}`. Variants
+such as `" PAYMENTS "` are normalized (NFKC, trim, casefold) and replaced with the
+configured spelling before the adapter runs. Denials are logged with the tool and
+field only, never the submitted values. Adapters expose only `execute`,
+`fetch`, and `input_schema`; a test asserts no mutating method or tool exists.
 
 ## Run with Docker
 
