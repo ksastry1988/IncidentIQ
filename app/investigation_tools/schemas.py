@@ -89,6 +89,8 @@ class ResultEnvelope(BaseModel):
     query: dict[str, Any]
     items: list[dict[str, Any]]
     truncated: bool
+    redacted: bool = False
+    redaction_count: int = 0
     retrieved_at: AwareDatetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

@@ -19,6 +19,7 @@ from app.investigation_tools.adapters import (
 )
 from app.config import ToolTimeoutSettings
 from app.investigation_tools.access import ACCESS_DENIED, AccessDenied, AccessPolicy
+from app.investigation_tools.redaction import Redactor
 from app.investigation_tools.schemas import ToolLimits
 
 logger = logging.getLogger(__name__)
@@ -41,12 +42,14 @@ class ToolRegistry:
         limits: ToolLimits | None = None,
         policy: AccessPolicy | None = None,
         timeout_seconds: float | None = None,
+        redactor: Redactor | None = None,
     ) -> None:
         if timeout_seconds is None:
             timeout_seconds = ToolTimeoutSettings().tool_timeout_seconds
         if not timeout_seconds > 0 or timeout_seconds == float("inf"):
             raise ValueError("timeout_seconds must be a positive, finite number")
         self._timeout = timeout_seconds
+        self._redactor = redactor or Redactor.from_settings()
         self._policy = policy or AccessPolicy.from_settings()
         limits = limits or ToolLimits()
         adapters = adapters or [
@@ -92,6 +95,18 @@ class ToolRegistry:
         return outcome["value"]
 
     def call_tool(self, name: str, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Run the tool; every result, including errors, is redacted before return."""
+        result = self._call_tool(name, arguments)
+        if not result["isError"]:
+            return result
+        result, count = self._redactor.redact(result)
+        if count:
+            result.setdefault("structuredContent", {}).update(
+                {"redacted": True, "redaction_count": count}
+            )
+        return result
+
+    def _call_tool(self, name: str, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
         adapter = self._adapters.get(name)
         if adapter is None:
             return _error(f"Unknown tool: {name}")
@@ -130,7 +145,9 @@ class ToolRegistry:
                 f"{adapter.source_name} is unavailable",
                 {"status": "error", "error": SOURCE_ERROR, "source": adapter.source_name},
             )
-        structured = envelope.model_dump(mode="json")
+        structured, count = self._redactor.redact(envelope.model_dump(mode="json"))
+        structured["redacted"] = count > 0
+        structured["redaction_count"] = count
         return {
             "content": [{"type": "text", "text": json.dumps(structured)}],
             "structuredContent": structured,
