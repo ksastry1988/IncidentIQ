@@ -5,6 +5,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 class MetricsQuery(BaseModel):
     service: str = Field(min_length=1, max_length=255)
+    environment: str = Field(default="production", min_length=1, max_length=255)
     incident_start: AwareDatetime
     incident_end: AwareDatetime
     baseline_start: AwareDatetime
@@ -23,6 +24,7 @@ class MetricSample(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     service: str
+    environment: str = Field(default="production", exclude=True)
     timestamp: AwareDatetime
     request_volume: int = Field(ge=0)
     p50_latency_ms: float = Field(ge=0)
@@ -138,7 +140,11 @@ class SimulatedMetricsSource:
         if self.unavailable:
             raise SimulatedMetricsSourceError("Simulated metrics source is unavailable")
 
-        service_samples = [sample for sample in SAMPLES if sample.service == query.service]
+        service_samples = [
+            sample
+            for sample in SAMPLES
+            if sample.service == query.service and sample.environment == query.environment
+        ]
         incident = self._window(
             service_samples, query.incident_start, query.incident_end
         )

@@ -68,6 +68,7 @@ class LogsAdapter(ToolAdapter[LogsParams]):
     def fetch(self, params: LogsParams) -> list[dict[str, Any]]:
         query = LogQuery(
             service=params.service,
+            environment=params.environment,
             start=params.start,
             end=params.end,
             severity=LogSeverity(params.severity.upper()) if params.severity else None,
@@ -99,6 +100,7 @@ class MetricsAdapter(ToolAdapter[MetricsParams]):
         comparison = self.source.query(
             MetricsQuery(
                 service=params.service,
+                environment=params.environment,
                 incident_start=params.start,
                 incident_end=params.end,
                 baseline_start=params.start - span,
@@ -125,6 +127,7 @@ class DeploymentsAdapter(ToolAdapter[DeploymentsParams]):
         history = self.source.query(
             DeploymentQuery(
                 service=params.service,
+                environment=params.environment,
                 as_of=params.end,
                 lookback_minutes=span_minutes,
             )
@@ -146,5 +149,7 @@ class DependenciesAdapter(ToolAdapter[DependenciesParams]):
         self.source = source or SimulatedDependencySource()
 
     def fetch(self, params: DependenciesParams) -> list[dict[str, Any]]:
-        result = self.source.query(DependencyQuery(service=params.service))
+        result = self.source.query(
+            DependencyQuery(service=params.service, environment=params.environment)
+        )
         return [r.model_dump(mode="json") for r in result.relationships]

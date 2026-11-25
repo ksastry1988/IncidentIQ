@@ -18,6 +18,7 @@ class LogEvent(BaseModel):
 
     id: str
     service: str
+    environment: str = Field(default="production", exclude=True)
     timestamp: AwareDatetime
     severity: LogSeverity
     message: str
@@ -26,6 +27,7 @@ class LogEvent(BaseModel):
 
 class LogQuery(BaseModel):
     service: str = Field(min_length=1, max_length=255)
+    environment: str = Field(default="production", min_length=1, max_length=255)
     start: AwareDatetime
     end: AwareDatetime
     severity: LogSeverity | None = None
@@ -106,6 +108,7 @@ class SimulatedLogSource:
                 event
                 for event in EVENTS
                 if event.service == query.service
+                and event.environment == query.environment
                 and query.start <= event.timestamp <= query.end
                 and (query.severity is None or event.severity == query.severity)
                 and (
@@ -125,5 +128,8 @@ class SimulatedLogSource:
             page=query.page,
             page_size=query.page_size,
             has_more=offset + query.page_size < len(matches),
-            service_known=any(e.service == query.service for e in EVENTS),
+            service_known=any(
+                e.service == query.service and e.environment == query.environment
+                for e in EVENTS
+            ),
         )

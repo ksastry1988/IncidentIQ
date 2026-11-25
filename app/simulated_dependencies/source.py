@@ -13,6 +13,7 @@ class RelationshipDirection(str, Enum):
 
 class DependencyQuery(BaseModel):
     service: str = Field(min_length=1, max_length=255)
+    environment: str = Field(default="production", min_length=1, max_length=255)
 
 
 class ServiceRelationship(BaseModel):
@@ -34,23 +35,27 @@ class SimulatedDependencySourceError(Exception):
     """The simulated dependency source is unavailable."""
 
 
-# (caller, callee) edges.
+# (caller, callee, environment) edges.
 DEPENDENCY_EDGES = (
-    ("checkout", "payments"),
-    ("checkout", "inventory"),
-    ("payments", "fraud-check"),
-    ("inventory", "inventory-db"),
-    ("search", "search-index"),
+    ("checkout", "payments", "production"),
+    ("checkout", "inventory", "production"),
+    ("payments", "fraud-check", "production"),
+    ("inventory", "inventory-db", "production"),
+    ("search", "search-index", "production"),
 )
 
 
-def _walk(service: str, direction: RelationshipDirection) -> list[ServiceRelationship]:
+def _walk(
+    service: str, direction: RelationshipDirection, environment: str
+) -> list[ServiceRelationship]:
     downward = direction is RelationshipDirection.DEPENDS_ON
     results: list[ServiceRelationship] = []
     queue = [[service]]
     while queue:
         path = queue.pop(0)
-        for caller, callee in sorted(DEPENDENCY_EDGES):
+        for caller, callee, edge_environment in sorted(DEPENDENCY_EDGES):
+            if edge_environment != environment:
+                continue
             current, nxt = (caller, callee) if downward else (callee, caller)
             if current != path[-1] or nxt in path:
                 continue
@@ -79,8 +84,8 @@ class SimulatedDependencySource:
 
         relationships = sorted(
             (
-                *_walk(query.service, RelationshipDirection.DEPENDS_ON),
-                *_walk(query.service, RelationshipDirection.DEPENDED_ON_BY),
+                *_walk(query.service, RelationshipDirection.DEPENDS_ON, query.environment),
+                *_walk(query.service, RelationshipDirection.DEPENDED_ON_BY, query.environment),
             ),
             key=lambda r: (r.direction.value, r.depth, r.service),
         )

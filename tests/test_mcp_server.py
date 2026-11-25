@@ -45,6 +45,25 @@ async def test_call_returns_envelope_with_source(name):
     assert result.structured_content["items"]
 
 
+@pytest.mark.parametrize("name", TOOLS)
+async def test_environment_isolation_excludes_production_data_from_staging(name):
+    source, args = TOOLS[name]
+    registry = ToolRegistry(
+        policy=AccessPolicy(["payments"], ["production", "staging"])
+    )
+    staging_args = {**args, "environment": "staging"}
+
+    production = await call(name, args, registry)
+    staging = await call(name, staging_args, registry)
+
+    assert not production.is_error and production.structured_content["items"]
+    assert not staging.is_error
+    if name == "metrics":
+        assert all(not window["data_available"] for window in staging.structured_content["items"])
+    else:
+        assert staging.structured_content["items"] == []
+
+
 @pytest.mark.parametrize("name", EMPTY)
 async def test_no_matches_is_successful_empty_result(name):
     registry = ToolRegistry(policy=AccessPolicy(["payments", "no-such-service"], ["production"]))
