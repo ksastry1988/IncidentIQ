@@ -98,3 +98,40 @@ def test_deployments_in_range():
         RANGE["start"] <= i["timestamp"].replace("+00:00", "Z") <= RANGE["end"]
         for i in result.items
     )
+
+
+# MCP layer
+import json  # noqa: E402
+
+from app.investigation_tools import ToolRegistry  # noqa: E402
+
+
+def test_mcp_list_tools():
+    tools = {t["name"]: t for t in ToolRegistry().list_tools()}
+    assert set(tools) == {"logs", "metrics", "deployments", "dependencies"}
+    for tool in tools.values():
+        assert tool["description"]
+        assert tool["annotations"]["readOnlyHint"] is True
+        assert {"service", "environment"} <= set(tool["inputSchema"]["required"])
+    assert {"start", "end"} <= set(tools["logs"]["inputSchema"]["required"])
+    assert "start" not in tools["dependencies"]["inputSchema"]["properties"]
+
+
+def test_mcp_call_tool_success():
+    result = ToolRegistry().call_tool("logs", {**BASE, **RANGE})
+    assert result["isError"] is False
+    assert set(result["structuredContent"]) == ENVELOPE_KEYS
+    assert json.loads(result["content"][0]["text"]) == result["structuredContent"]
+
+
+def test_mcp_call_tool_validation_error():
+    result = ToolRegistry().call_tool("logs", {"service": "payments"})
+    assert result["isError"] is True
+    fields = {e["field"] for e in result["structuredContent"]["validation_errors"]}
+    assert {"environment", "start", "end"} <= fields
+
+
+def test_mcp_unknown_tool_and_custom_limits():
+    registry = ToolRegistry(limits=ToolLimits(default_limit=2, max_limit=3))
+    assert registry.call_tool("nope", {})["isError"] is True
+    assert registry.call_tool("logs", {**BASE, **RANGE, "limit": 4})["isError"] is True

@@ -31,3 +31,7 @@ __all__ = [
     "ToolName",
     "ToolParams",
 ]
+
+from app.investigation_tools.mcp import ToolRegistry  # noqa: E402
+
+__all__.append("ToolRegistry")

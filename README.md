@@ -224,6 +224,13 @@ Every result uses one envelope:
 | `truncated` | `true` when more matching records existed than `limit` |
 | `retrieved_at` | UTC timestamp of retrieval |
 
+`ToolRegistry` (`mcp.py`) is the MCP-facing layer, without depending on an MCP
+SDK. `list_tools()` returns `tools/list`-shaped descriptors (`name`,
+`description`, `inputSchema`, `readOnlyHint`). `call_tool(name, arguments)`
+returns a `tools/call`-shaped result: `structuredContent` holds the envelope on
+success; unknown tools and validation failures return `isError: true` with
+per-field `validation_errors`.
+
 ## Run with Docker
 
 Build and start the API and PostgreSQL database:
