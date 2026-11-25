@@ -186,7 +186,7 @@ its own acceptance criteria. Update this table as subtasks land.
 | Subtask | Issue | Status |
 | --- | --- | --- |
 | MCP adapter interface, tool schemas, result envelope | #31 | Done |
-| Simulated-source adapters exposed via MCP server | #32 | Planned |
+| Simulated-source adapters exposed via MCP server | #32 | Done |
 | Service/environment authorization and read-only enforcement | #33 | Planned |
 | Configurable timeouts and distinct source-error handling | #34 | Planned |
 | Sensitive-data redaction and credential isolation | #35 | Planned |
@@ -230,6 +230,29 @@ SDK. `list_tools()` returns `tools/list`-shaped descriptors (`name`,
 returns a `tools/call`-shaped result: `structuredContent` holds the envelope on
 success; unknown tools and validation failures return `isError: true` with
 per-field `validation_errors`.
+
+### MCP server
+
+`app/investigation_tools/server.py` serves the registry over MCP (stdio). Start
+it locally with:
+
+```bash
+python -m app.investigation_tools.server
+```
+
+It registers exactly four read-only tools; no mutating tool exists. All take
+`service` and `environment` (required); the time-ranged tools also take
+`start` and `end` (ISO 8601 with timezone) and optional `limit`.
+
+| Tool | Parameters | `source` |
+| --- | --- | --- |
+| `logs` | `service`, `environment`, `start`, `end`, `severity`, `error_pattern`, `correlation_id`, `limit` | `simulated-logs` |
+| `metrics` | `service`, `environment`, `start`, `end`, `limit` | `simulated-metrics` |
+| `deployments` | `service`, `environment`, `start`, `end`, `limit` | `simulated-deployments` |
+| `dependencies` | `service`, `environment`, `limit` | `simulated-dependencies` |
+
+A valid query with no matches returns a successful result with `items: []`.
+Tests use an in-process client: `async with Client(create_server()) as c`.
 
 ## Run with Docker
 
