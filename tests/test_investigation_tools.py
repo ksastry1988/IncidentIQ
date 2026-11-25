@@ -14,7 +14,7 @@ from app.investigation_tools import (
 RANGE = {"start": "2026-11-17T11:00:00Z", "end": "2026-11-17T13:00:00Z"}
 BASE = {"service": "payments", "environment": "production"}
 ENVELOPE_KEYS = {
-    "source", "tool", "service", "environment", "query", "items", "truncated", "retrieved_at",
+    "status", "source", "tool", "service", "environment", "query", "items", "truncated", "retrieved_at",
 }
 
 TIMED = [LogsAdapter, MetricsAdapter, DeploymentsAdapter]

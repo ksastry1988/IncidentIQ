@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationInfo, model_validator
 
@@ -81,6 +81,7 @@ class DependenciesParams(ToolParams):
 
 
 class ResultEnvelope(BaseModel):
+    status: Literal["ok"] = "ok"
     source: str
     tool: ToolName
     service: str

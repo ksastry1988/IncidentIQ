@@ -188,7 +188,7 @@ its own acceptance criteria. Update this table as subtasks land.
 | MCP adapter interface, tool schemas, result envelope | #31 | Done |
 | Simulated-source adapters exposed via MCP server | #32 | Done |
 | Service/environment authorization and read-only enforcement | #33 | Done |
-| Configurable timeouts and distinct source-error handling | #34 | Planned |
+| Configurable timeouts and distinct source-error handling | #34 | Done |
 | Sensitive-data redaction and credential isolation | #35 | Planned |
 | Worker MCP client integration and end-to-end tests | #36 | Planned |
 
@@ -216,6 +216,7 @@ Every result uses one envelope:
 
 | Field | Meaning |
 | --- | --- |
+| `status` | Always `ok` on success; error results use `status: "error"` |
 | `source` | Name of the backing source |
 | `tool` | `logs`, `metrics`, `deployments`, or `dependencies` |
 | `service`, `environment` | Echo of the request |
@@ -271,6 +272,23 @@ such as `" PAYMENTS "` are normalized (NFKC, trim, casefold) and replaced with t
 configured spelling before the adapter runs. Denials are logged with the tool and
 field only, never the submitted values. Adapters expose only `execute`,
 `fetch`, and `input_schema`; a test asserts no mutating method or tool exists.
+
+### Timeouts and error results
+
+Each tool call is bounded by `INCIDENTIQ_TOOL_TIMEOUT_SECONDS` (default `10`;
+must be greater than zero, otherwise startup validation fails). Failures return
+`isError: true` with a `structuredContent` that has `status: "error"`, an
+`error` code, and the `source` name; successes (including empty ones) have
+`status: "ok"` and `items`. No stack traces are returned; details are logged.
+
+| `error` | Meaning |
+| --- | --- |
+| `timeout` | The source did not answer within the timeout; the call stopped waiting and its late result is discarded. |
+| `source_error` | The source failed or is unavailable. |
+| `access_denied` | `service` or `environment` is not allowed (includes `field`). |
+
+Invalid parameters return `validation_errors`. A failing tool does not affect
+other tool calls.
 
 ## Run with Docker
 
