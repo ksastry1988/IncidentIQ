@@ -18,6 +18,14 @@ class ToolAccessSettings(BaseSettings):
     tool_allowed_environments: str = "production,staging"
 
 
+class ToolTimeoutSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="INCIDENTIQ_", env_file=".env", extra="ignore"
+    )
+
+    tool_timeout_seconds: float = Field(default=10.0, gt=0, allow_inf_nan=False)
+
+
 class Settings(ToolAccessSettings):
     """Single typed source of configuration, read from INCIDENTIQ_* env vars or .env."""
 

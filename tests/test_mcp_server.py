@@ -1,5 +1,11 @@
+import time
+
 import pytest
 from mcp import Client
+from pydantic import ValidationError
+
+from app.config import ToolTimeoutSettings
+from app.investigation_tools.adapters import DependenciesAdapter, LogsAdapter
 
 from app.investigation_tools import ToolLimits, ToolRegistry
 from app.investigation_tools.server import create_server
@@ -163,3 +169,86 @@ def test_adapters_expose_only_read_operations():
         assert public <= allowed, public - allowed
     names = {t["name"] for t in ToolRegistry().list_tools()}
     assert not any(v in n for n in names for v in ("write", "delete", "update", "create", "restart"))
+
+
+class FakeAdapter(LogsAdapter):
+    def __init__(self, behavior):
+        super().__init__()
+        self.behavior = behavior
+
+    def fetch(self, params):
+        return self.behavior()
+
+
+def _registry(logs_behavior, **kwargs):
+    return ToolRegistry(
+        adapters=[FakeAdapter(logs_behavior), DependenciesAdapter()], **kwargs
+    )
+
+
+def _slow():
+    time.sleep(2)
+    return []
+
+
+def _unavailable():
+    raise ConnectionError("db at 10.0.0.5 refused")
+
+
+async def test_slow_source_returns_timeout_error():
+    result = await call("logs", {**BASE, **RANGE}, _registry(_slow, timeout_seconds=0.1))
+    assert result.is_error
+    assert result.structured_content == {
+        "status": "error",
+        "error": "timeout",
+        "source": "simulated-logs",
+    }
+
+
+async def test_custom_timeout_allows_slower_source():
+    def slowish():
+        time.sleep(0.2)
+        return []
+
+    result = await call("logs", {**BASE, **RANGE}, _registry(slowish, timeout_seconds=2))
+    assert not result.is_error
+    assert result.structured_content["status"] == "ok"
+
+
+async def test_source_failure_is_source_error_without_internals():
+    result = await call("logs", {**BASE, **RANGE}, _registry(_unavailable))
+    assert result.is_error
+    assert result.structured_content == {
+        "status": "error",
+        "error": "source_error",
+        "source": "simulated-logs",
+    }
+    text = result.content[0].text
+    assert "Traceback" not in text and "10.0.0.5" not in text
+
+
+async def test_empty_success_is_distinct_from_errors():
+    result = await call("logs", {**BASE, **RANGE}, _registry(lambda: []))
+    assert not result.is_error
+    assert result.structured_content["status"] == "ok"
+    assert result.structured_content["items"] == []
+    assert "error" not in result.structured_content
+
+
+async def test_failing_tool_does_not_block_others():
+    registry = _registry(_unavailable)
+    assert (await call("logs", {**BASE, **RANGE}, registry)).is_error
+    assert not (await call("dependencies", BASE, registry)).is_error
+
+
+def test_timeout_setting_default_and_validation(monkeypatch):
+    monkeypatch.delenv("INCIDENTIQ_TOOL_TIMEOUT_SECONDS", raising=False)
+    assert ToolTimeoutSettings(_env_file=None).tool_timeout_seconds == 10
+    monkeypatch.setenv("INCIDENTIQ_TOOL_TIMEOUT_SECONDS", "2.5")
+    assert ToolRegistry()._timeout == 2.5
+    for bad in ("0", "-1"):
+        monkeypatch.setenv("INCIDENTIQ_TOOL_TIMEOUT_SECONDS", bad)
+        with pytest.raises(ValidationError):
+            ToolTimeoutSettings(_env_file=None)
+    with pytest.raises(ValueError):
+        ToolRegistry(timeout_seconds=0)
