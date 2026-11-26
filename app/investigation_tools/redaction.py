@@ -27,7 +27,7 @@ _TEXT_RULES: list[tuple[re.Pattern[str], str]] = [
     # scheme://user:password@host
     (re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s:/@]*:)[^\s@/]+(@)"), rf"\1{REDACTED}\2"),
     # key=value / key: value / "key": "value" for sensitive key names
-    (re.compile(rf"""(?i)(["']?{_KEY}["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&"'}}\]]+)"""), rf"\1{REDACTED}"),
+    (re.compile(rf"""(?i)(["']?{_KEY}["']?\s*[:=]\s*)(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s,;&"'}}\]]+)"""), rf"\1{REDACTED}"),
     # connection-string segments: Password=...; Pwd=...; AccountKey=...
     (re.compile(r"(?i)\b((?:password|pwd|accountkey|sharedaccesskey)\s*=\s*)[^;\s]+"), rf"\1{REDACTED}"),
     (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*"), REDACTED),  # JWT
@@ -53,8 +53,13 @@ class Redactor:
         settings = settings or ToolRedactionSettings()
         return cls(v.strip() for v in settings.tool_redact_values.split(","))
 
-    def redact(self, value: Any) -> tuple[Any, int]:
-        """Return a redacted copy of `value` and the number of replacements."""
+    def redact(self, value: Any, preserve: Iterable[str] = ()) -> tuple[Any, int]:
+        """Return a redacted copy of `value` and the number of replacements.
+
+        Top-level dict keys named in `preserve` keep their values untouched (for
+        fixed protocol fields that a configured secret must not corrupt).
+        """
+        keep = frozenset(preserve)
         count = 0
 
         def text(s: str) -> str:
@@ -68,13 +73,21 @@ class Redactor:
                 count += n
             return s
 
-        def walk(v: Any) -> Any:
+        def walk(v: Any, top: bool = False) -> Any:
             nonlocal count
             if isinstance(v, str):
                 return text(v)
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                if str(v) in self._secrets:
+                    count += 1
+                    return REDACTED
+                return v
             if isinstance(v, dict):
                 out: dict[Any, Any] = {}
                 for k, item in v.items():
+                    if top and k in keep:
+                        out[k] = item
+                        continue
                     key = text(k) if isinstance(k, str) else k
                     if (
                         isinstance(k, str)
@@ -92,4 +105,4 @@ class Redactor:
                 return [walk(i) for i in v]
             return v
 
-        return walk(value), count
+        return walk(value, True), count

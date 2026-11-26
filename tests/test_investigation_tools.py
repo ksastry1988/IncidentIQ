@@ -135,3 +135,15 @@ def test_mcp_unknown_tool_and_custom_limits():
     registry = ToolRegistry(limits=ToolLimits(default_limit=2, max_limit=3))
     assert registry.call_tool("nope", {})["isError"] is True
     assert registry.call_tool("logs", {**BASE, **RANGE, "limit": 4})["isError"] is True
+
+
+def test_redactor_escaped_quotes_numbers_and_preserved_fields():
+    from app.investigation_tools.redaction import REDACTED, Redactor
+
+    out, _ = Redactor().redact('{"password": "ab\\"cd-tail"}')
+    assert "tail" not in out and "cd" not in out
+
+    redactor = Redactor(["12345", "ok", "text"])
+    out, count = redactor.redact({"status": "ok", "n": 12345, "m": "ok"}, preserve={"status"})
+    assert out == {"status": "ok", "n": REDACTED, "m": REDACTED}
+    assert count == 2
