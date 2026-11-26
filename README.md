@@ -189,7 +189,7 @@ its own acceptance criteria. Update this table as subtasks land.
 | Simulated-source adapters exposed via MCP server | #32 | Done |
 | Service/environment authorization and read-only enforcement | #33 | Done |
 | Configurable timeouts and distinct source-error handling | #34 | Done |
-| Sensitive-data redaction and credential isolation | #35 | Planned |
+| Sensitive-data redaction and credential isolation | #35 | Done |
 | Worker MCP client integration and end-to-end tests | #36 | Planned |
 
 ### Adapter interface and result envelope
@@ -289,6 +289,31 @@ must be greater than zero, otherwise startup validation fails). Failures return
 
 Invalid parameters return `validation_errors`. A failing tool does not affect
 other tool calls.
+
+### Redaction and credential isolation
+
+Every `call_tool` result, success or error, passes through a redaction step
+(`redaction.py`) before it is returned, in both `content` and
+`structuredContent`. It walks nested dicts and lists and masks:
+
+- values of fields whose names look sensitive (`password`, `secret`, `token`,
+  `api_key`, `authorization`, `cookie`, `connection_string`, `private_key`, ...);
+- secrets in free text such as log and error messages: `key=value` and JSON
+  pairs, `Authorization`/`Cookie` headers, `Bearer`/`Basic` tokens, credentials
+  in URLs and connection strings (`Password=...`), JWTs, private-key blocks, and
+  common provider tokens (AWS, GitHub, Slack, `sk-`);
+- any value listed in `INCIDENTIQ_TOOL_REDACT_VALUES` (comma-separated), wherever
+  it appears, including field names.
+
+Redacted values are replaced with the fixed marker `[REDACTED]`. Successful
+envelopes always include `redacted` (boolean) and `redaction_count`; error
+results include them when redaction occurred. Redaction is heuristic, so list
+known source credentials in `INCIDENTIQ_TOOL_REDACT_VALUES`.
+
+Source credentials live only in server configuration (environment/`.env`). No
+tool schema, argument, result, or error message carries them: tools accept only
+the documented parameters, and failures return generic messages with details
+logged server-side.
 
 ## Run with Docker
 

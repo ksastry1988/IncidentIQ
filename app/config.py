@@ -26,6 +26,16 @@ class ToolTimeoutSettings(BaseSettings):
     tool_timeout_seconds: float = Field(default=10.0, gt=0, allow_inf_nan=False)
 
 
+class ToolRedactionSettings(BaseSettings):
+    """Server-held secrets (comma-separated) that must never appear in tool output."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="INCIDENTIQ_", env_file=".env", extra="ignore"
+    )
+
+    tool_redact_values: str = ""
+
+
 class Settings(ToolAccessSettings):
     """Single typed source of configuration, read from INCIDENTIQ_* env vars or .env."""
 

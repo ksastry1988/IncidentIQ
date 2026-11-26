@@ -252,3 +252,87 @@ def test_timeout_setting_default_and_validation(monkeypatch):
             ToolTimeoutSettings(_env_file=None)
     with pytest.raises(ValueError):
         ToolRegistry(timeout_seconds=0)
+
+
+# --- Redaction -------------------------------------------------------------
+import json  # noqa: E402
+
+from app.investigation_tools.redaction import REDACTED, Redactor  # noqa: E402
+
+SECRET = "s3cr3t-Value-42"
+
+
+def test_redactor_masks_nested_data_and_field_names():
+    data = {
+        "password": "hunter2",
+        "author": "alice",
+        "nested": [{"api_key": "abc123", "ok": 1}, {"deep": {"Authorization": "Bearer abcdefgh12345"}}],
+        "token_count": None,
+    }
+    out, count = Redactor().redact(data)
+    assert out["password"] == REDACTED
+    assert out["author"] == "alice"
+    assert out["nested"][0] == {"api_key": REDACTED, "ok": 1}
+    assert out["nested"][1]["deep"]["Authorization"] == REDACTED
+    assert out["token_count"] is None
+    assert count == 3
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "login failed password=hunter2 for user",
+        'payload {"api_key": "abc123xyz"}',
+        "Authorization: Bearer abcdef123456",
+        "connect postgresql://app:hunter2@db:5432/x failed",
+        "Server=db;User Id=sa;Password=hunter2;Encrypt=true",
+        "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc",
+    ],
+)
+def test_redactor_masks_log_messages(message):
+    out, count = Redactor().redact(message)
+    assert count >= 1
+    assert "hunter2" not in out and "abc123" not in out and "eyJ" not in out
+    assert REDACTED in out
+
+
+def test_redactor_masks_configured_secrets_anywhere():
+    out, count = Redactor([SECRET]).redact({f"k-{SECRET}": f"x {SECRET} y"})
+    assert SECRET not in json.dumps(out) and count == 2
+
+
+class LeakyLogs(LogsAdapter):
+    def fetch(self, params):
+        return [
+            {"message": f"db password=hunter2 {SECRET}", "context": {"secret_key": "k", "n": 1}},
+        ]
+
+
+async def test_results_are_redacted_and_report_it():
+    registry = ToolRegistry(adapters=[LeakyLogs()], redactor=Redactor([SECRET]))
+    result = await call("logs", {**BASE, **RANGE}, registry)
+    text = json.dumps(result.structured_content) + result.content[0].text
+    assert SECRET not in text and "hunter2" not in text
+    assert result.structured_content["redacted"] is True
+    assert result.structured_content["redaction_count"] >= 3
+
+
+def test_clean_results_report_no_redaction():
+    out = ToolRegistry(redactor=Redactor()).call_tool("dependencies", BASE)
+    assert out["structuredContent"]["redacted"] is False
+
+
+def test_error_messages_never_contain_secrets():
+    registry = ToolRegistry(redactor=Redactor([SECRET]))
+    for out in (
+        registry.call_tool(f"no-such-{SECRET}", {}),
+        registry.call_tool("logs", {**BASE, **RANGE, "bogus": SECRET}),
+        registry.call_tool("logs", {"service": SECRET, "environment": "production"}),
+    ):
+        assert out["isError"] and SECRET not in json.dumps(out)
+
+
+def test_secrets_loaded_from_settings(monkeypatch):
+    monkeypatch.setenv("INCIDENTIQ_TOOL_REDACT_VALUES", f"{SECRET}, other-secret")
+    out, _ = Redactor.from_settings().redact("a other-secret b")
+    assert out == f"a {REDACTED} b"
