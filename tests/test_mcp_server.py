@@ -336,3 +336,19 @@ def test_secrets_loaded_from_settings(monkeypatch):
     monkeypatch.setenv("INCIDENTIQ_TOOL_REDACT_VALUES", f"{SECRET}, other-secret")
     out, _ = Redactor.from_settings().redact("a other-secret b")
     assert out == f"a {REDACTED} b"
+
+
+def test_error_results_keep_transport_discriminators():
+    from app.investigation_tools.redaction import Redactor
+    from app.investigation_tools.mcp import _error
+
+    redactor = Redactor(["text", "error"])
+    result = _error("boom text", {"error": "timeout", "source": "logs"})
+    from app.investigation_tools import mcp as m
+    server = m.ToolRegistry.__new__(m.ToolRegistry)
+    server._redactor = redactor
+    server._call_tool = lambda *a, **k: result
+    out = server.call_tool("x")
+    assert out["content"][0]["type"] == "text"
+    assert out["isError"] is True
+    assert out["structuredContent"]["error"] == "timeout"

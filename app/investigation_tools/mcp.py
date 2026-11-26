@@ -99,7 +99,20 @@ class ToolRegistry:
         result = self._call_tool(name, arguments)
         if not result["isError"]:
             return result
-        result, count = self._redactor.redact(result)
+        count = 0
+        content = []
+        for block in result["content"]:
+            # Keep the block's "type" discriminator; only the text is sensitive.
+            text, n = self._redactor.redact(block["text"])
+            count += n
+            content.append({**block, "text": text})
+        result = {**result, "content": content}
+        if "structuredContent" in result:
+            structured, n = self._redactor.redact(
+                result["structuredContent"], preserve=_ERROR_FIELDS
+            )
+            count += n
+            result["structuredContent"] = structured
         if count:
             result.setdefault("structuredContent", {}).update(
                 {"redacted": True, "redaction_count": count}
@@ -145,7 +158,9 @@ class ToolRegistry:
                 f"{adapter.source_name} is unavailable",
                 {"status": "error", "error": SOURCE_ERROR, "source": adapter.source_name},
             )
-        structured, count = self._redactor.redact(envelope.model_dump(mode="json"))
+        structured, count = self._redactor.redact(
+            envelope.model_dump(mode="json"), preserve=_ENVELOPE_FIELDS
+        )
         structured["redacted"] = count > 0
         structured["redaction_count"] = count
         return {
@@ -153,6 +168,11 @@ class ToolRegistry:
             "structuredContent": structured,
             "isError": False,
         }
+
+
+# Fixed fields a configured secret value must never overwrite.
+_ENVELOPE_FIELDS = frozenset({"status", "source", "tool", "truncated", "retrieved_at"})
+_ERROR_FIELDS = frozenset({"status", "error", "source", "field"})
 
 
 class _TimedOut(Exception):
